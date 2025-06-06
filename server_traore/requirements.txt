@@ -1,0 +1,15 @@
+flask
+flask-cors
+flask-sqlalchemy
+flask-jwt-extended
+flask-migrate
+flask-bcrypt
+flask-restful
+flask-mail
+flask-redis
+flask-limiter
+flask-socketio
+redis
+gunicorn
+python-dotenv
+requests
