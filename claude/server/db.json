@@ -1,0 +1,27 @@
+[
+    {
+        "name": "PC-1-musa",
+        "ip": "192.168.11.111",
+        "status": "offline"
+    },
+    {
+        "name": "PC-2-blessings",
+        "ip": "192.168.11.106",
+        "status": "offline"
+    },
+    {
+        "name": "PC-36-salle",
+        "ip": "172.20.213.148",
+        "status": "offline"
+    },
+    {
+        "name": "PC-34",
+        "ip": "172.20.215.143",
+        "status": "offline"
+    },
+    {
+        "name": "PC-1-musa",
+        "ip": "192.168.11.123",
+        "status": "offline"
+    }
+]
