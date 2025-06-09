@@ -29,12 +29,7 @@ def register_pc():
 
 
 # ==============================
-# List all PCs and their statuses
-@shutdown_routes.route('/list-pcs', methods=['GET'])
-@jwt_required()
-def list_pcs():
-    db = load_db()
-    return jsonify(db), 200
+
 
 
 # ==============================
