@@ -1,0 +1,141 @@
+\documentclass[10.5pt,a4paper,sans]{moderncv}
+
+\moderncvstyle{banking}
+\moderncvcolor{blue}
+
+\usepackage[utf8]{inputenc}
+\usepackage[scale=0.9, top=0.8cm, bottom=0.8cm]{geometry}
+\usepackage{xcolor}
+\usepackage{fontawesome5}
+\usepackage{multicol}
+\usepackage{enumitem}
+\usepackage{qrcode}
+
+\definecolor{primarycolor}{RGB}{0,102,204}
+
+\setlength{\hintscolumnwidth}{2.5cm}
+\setlength{\separatorcolumnwidth}{0.3cm}
+\setlist[itemize]{leftmargin=*, topsep=1pt, itemsep=1pt}
+
+\newcommand{\cvname}{CHALI DAVID MALAMA}
+\newcommand{\cvtitle}{Étudiant en Data Science \& Intelligence Artificielle}
+\newcommand{\cvphone}{0613968378}
+\newcommand{\cvemail}{chalimalamadavid@gmail.com}
+\newcommand{\cvgithub}{https://github.com/neoXmito}
+\newcommand{\cvqrurl}{https://www.linkedin.com/in/malama-chali-dav}
+
+\name{\cvname}{}
+\title{\cvtitle}
+\phone[mobile]{\cvphone}
+\email{\cvemail}
+\social[github]{\cvgithub}
+
+% --- Place QR code in the title block (page 1) ---
+\extrainfo{\qrcode[height=1.2cm]{\cvqrurl}}
+
+% -------- OBJECTIF ----------
+\newcommand{\cvobjective}{
+Étudiant en préparation d’un diplôme bac+5 à l’ENIB (Brest), spécialisé en Génie Informatique avec expertise en Data Science et Intelligence Artificielle. Passionné par l’optimisation de systèmes et la modélisation prédictive, je souhaite contribuer aux projets innovants de CERVAAL en appliquant mes compétences en IA, optimisation et développement de solutions data-driven.
+}
+
+% -------- COMPÉTENCES ----------
+\newcommand{\cvskills}{
+
+
+
+\cvitem{\small Langages}{Python (avancé), SQL, C++}
+\cvitem{\small ML/DL}{TensorFlow, PyTorch, Scikit-learn, Transformers}
+\cvitem{\small IA Générative}{Fine-tuning LLM, RAG, BioBERT, CamemBERT}
+\cvitem{\small Outils Data}{Pandas, NumPy, Power BI, Streamlit, Flask, Docker}
+\cvitem{\small Bases de données}{PostgreSQL, MySQL}
+\cvitem{\small Dev Tools}{Git, VS Code, XGBoost}
+
+
+
+}
+
+
+% -------- FORMATION ----------
+\newcommand{\cveducation}{
+\cventry{2025--présent}{Informatique}{École Nationale d’Ingénieurs de Brest}{}{}{}
+\cventry{2021--2025}{Génie Industriel – IA \& Data Science}{ENSAM}{}{}{}
+}
+
+% -------- EXPÉRIENCE ----------
+\newcommand{\cvexperience}{
+\cventry{Juin–Août 2025}{Stagiaire Data Science}{Technocolabs}{}{}{
+\begin{itemize}
+\item Développement d’un modèle de prédiction de risque de crédit (97\% précision)
+\item Segmentation clients et analyse comportementale pour institutions financières
+\item Déploiement Streamlit pour validation opérationnelle
+\end{itemize}}
+}
+
+% -------- PROJETS ----------
+\newcommand{\cvprojects}{
+
+
+
+
+\cventry{2025}{Planification de la Recharge des Véhicules Électriques}{\textcolor{primarycolor}{Optimisation \& Énergie Intelligente}}{}{}{
+\begin{itemize}
+\item Optimisation des plannings de recharge via l’algorithme NSGA-II
+\item Équilibre entre charge réseau et satisfaction client (multi-objectifs)
+\item Interface Streamlit pour visualiser et tester les stratégies
+\end{itemize}}
+
+\cventry{2025}{Assistant de Recherche en Santé (NLP/RAG)}{\textcolor{primarycolor}{IA Générative \& NLP}}{}{}{
+\begin{itemize}
+\item Système QA biomédical bilingue (BioBERT, CamemBERT)
+\item Pipeline Retrieval-Augmented Generation (RAG)
+\end{itemize}}
+
+\cventry{2024}{Agent E-commerce AI}{\textcolor{primarycolor}{IA \& Personnalisation}}{}{}{
+\begin{itemize}
+\item Prédicteur de prix e-commerce et moteur de recommandation
+\item Agent autonome multi-modal (texte, image, son)
+\end{itemize}}
+
+
+}
+
+% -------- CERTIFICATIONS ----------
+\newcommand{\cvachievements}{
+\cvitem{2025}{LLM Engineering (IA Générative)}
+\cvitem{2025}{Lean 6 Sigma Yellow Belt}
+\cvitem{2024}{Machine Learning \& AI}
+}
+
+\begin{document}
+
+\makecvtitle
+\vspace{-1.2cm}
+
+\section{\textcolor{primarycolor}{\faUser} Objectif}
+\small\cvobjective
+
+\section{\textcolor{primarycolor}{\faGraduationCap} Formation}
+\small\cveducation
+
+\section{\textcolor{primarycolor}{\faCogs} Compétences Techniques}
+\small\cvskills
+
+\section{\textcolor{primarycolor}{\faBriefcase} Expérience}
+\small\cvexperience
+
+\section{\textcolor{primarycolor}{\faCode} Projets Academic }
+\small\cvprojects
+
+\section{\textcolor{primarycolor}{\faTrophy} Certifications, Langues \& Intérêts}
+\small
+\begin{multicols}{2}
+\cvachievements
+\columnbreak
+\cvitem{Anglais}{Langue maternelle}
+\cvitem{Français}{Courant}
+\cvitem{Centres d’intérêt}{IA générative, optimisation, innovation, hackathons, musique , foot}
+\end{multicols}
+
+% (Removed the bottom QR code block)
+
+\end{document}
