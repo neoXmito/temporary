@@ -1,141 +1,380 @@
-\documentclass[10.5pt,a4paper,sans]{moderncv}
+import time
+import threading
+import numpy as np
 
-\moderncvstyle{banking}
-\moderncvcolor{blue}
+import rclpy  
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
-\usepackage[utf8]{inputenc}
-\usepackage[scale=0.9, top=0.8cm, bottom=0.8cm]{geometry}
-\usepackage{xcolor}
-\usepackage{fontawesome5}
-\usepackage{multicol}
-\usepackage{enumitem}
-\usepackage{qrcode}
-
-\definecolor{primarycolor}{RGB}{0,102,204}
-
-\setlength{\hintscolumnwidth}{2.5cm}
-\setlength{\separatorcolumnwidth}{0.3cm}
-\setlist[itemize]{leftmargin=*, topsep=1pt, itemsep=1pt}
-
-\newcommand{\cvname}{CHALI DAVID MALAMA}
-\newcommand{\cvtitle}{Étudiant en Data Science \& Intelligence Artificielle}
-\newcommand{\cvphone}{0613968378}
-\newcommand{\cvemail}{chalimalamadavid@gmail.com}
-\newcommand{\cvgithub}{https://github.com/neoXmito}
-\newcommand{\cvqrurl}{https://www.linkedin.com/in/malama-chali-dav}
-
-\name{\cvname}{}
-\title{\cvtitle}
-\phone[mobile]{\cvphone}
-\email{\cvemail}
-\social[github]{\cvgithub}
-
-% --- Place QR code in the title block (page 1) ---
-\extrainfo{\qrcode[height=1.2cm]{\cvqrurl}}
-
-% -------- OBJECTIF ----------
-\newcommand{\cvobjective}{
-Étudiant en préparation d’un diplôme bac+5 à l’ENIB (Brest), spécialisé en Génie Informatique avec expertise en Data Science et Intelligence Artificielle. Passionné par l’optimisation de systèmes et la modélisation prédictive, je souhaite contribuer aux projets innovants de CERVAAL en appliquant mes compétences en IA, optimisation et développement de solutions data-driven.
-}
-
-% -------- COMPÉTENCES ----------
-\newcommand{\cvskills}{
+import sensor_msgs.msg
+from std_msgs.msg import Float32MultiArray
+from cv_bridge import CvBridge
+import cv2
 
 
+class BarycenterTracker:
+    """
+    Optimized Barycenter (Centroid) tracking for Raspberry Pi 4.
+    Uses image moments to calculate the center of mass with minimal CPU usage.
+    """
+    
+    def __init__(self):
+        self.tracking_mode = "contour"
+        self.show_visualization = True
+        
+        # Color range for color-based tracking (HSV)
+        self.lower_color = np.array([0, 120, 70])
+        self.upper_color = np.array([10, 255, 255])
+        self.lower_color2 = np.array([170, 120, 70])
+        self.upper_color2 = np.array([180, 255, 255])
+        
+        # Pre-allocate kernels
+        self.morph_kernel = np.ones((5, 5), np.uint8)
+        
+    def calculate_barycenter(self, binary_image):
+        """Calculate barycenter using image moments."""
+        moments = cv2.moments(binary_image)
+        
+        if moments['m00'] > 0:
+            cx = int(moments['m10'] / moments['m00'])
+            cy = int(moments['m01'] / moments['m00'])
+            return (cx, cy)
+        
+        return None
+    
+    def track_contours(self, frame):
+        """Track all contours and their barycenters - OPTIMIZED."""
+        # Reduce resolution for processing
+        small_frame = cv2.resize(frame, (160, 120), interpolation=cv2.INTER_LINEAR)
+        scale_x = frame.shape[1] / 160
+        scale_y = frame.shape[0] / 120
+        
+        # Convert to grayscale and threshold
+        gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
+        _, binary = cv2.threshold(gray, 60, 255, cv2.THRESH_BINARY)
+        
+        # Find contours
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        barycenters = []
+        min_area = 100  # Adjusted for smaller frame
+        
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            
+            if area > min_area:
+                M = cv2.moments(contour)
+                if M['m00'] > 0:
+                    cx = int((M['m10'] / M['m00']) * scale_x)
+                    cy = int((M['m01'] / M['m00']) * scale_y)
+                    scaled_area = area * scale_x * scale_y
+                    
+                    barycenters.append((cx, cy, scaled_area))
+        
+        # Minimal visualization on original frame
+        output = frame.copy() if self.show_visualization else frame
+        
+        if self.show_visualization:
+            for cx, cy, area in barycenters:
+                # Simple visualization - just circle and text
+                cv2.circle(output, (cx, cy), 6, (0, 0, 255), -1)
+                cv2.putText(output, f"{cx},{cy}", (cx+8, cy-8),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
+            
+            cv2.putText(output, f"Obj: {len(barycenters)}", (5, 15),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        
+        return output, barycenters
+    
+    def track_line(self, frame, roi_height_ratio=0.3):
+        """Track a line using barycenter - OPTIMIZED."""
+        height, width = frame.shape[:2]
+        
+        # Work with smaller ROI
+        roi_start = int(height * (1 - roi_height_ratio))
+        roi = frame[roi_start:height, :]
+        
+        # Resize ROI for faster processing
+        small_roi = cv2.resize(roi, (160, 0), interpolation=cv2.INTER_LINEAR)
+        scale_x = roi.shape[1] / small_roi.shape[1]
+        
+        gray = cv2.cvtColor(small_roi, cv2.COLOR_BGR2GRAY)
+        
+        # Simple threshold instead of adaptive (faster)
+        _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
+        
+        # Calculate barycenter
+        barycenter = self.calculate_barycenter(binary)
+        
+        output = frame if not self.show_visualization else frame.copy()
+        
+        if barycenter:
+            cx = int(barycenter[0] * scale_x)
+            cy_full = int(barycenter[1] * (roi.shape[0] / small_roi.shape[0])) + roi_start
+            
+            center_x = width // 2
+            error = cx - center_x
+            normalized_error = error / (width / 2)
+            
+            if self.show_visualization:
+                cv2.circle(output, (cx, cy_full), 8, (0, 0, 255), -1)
+                cv2.line(output, (center_x, roi_start), (center_x, height), (0, 255, 0), 1)
+                cv2.putText(output, f"E:{error}", (5, height - 5),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            
+            return output, (cx, cy_full, error, normalized_error)
+        else:
+            if self.show_visualization:
+                cv2.putText(output, "NO LINE", (5, 15),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            return output, None
+    
+    def track_color(self, frame):
+        """Track colored objects using barycenter - OPTIMIZED."""
+        # Reduce resolution for color tracking
+        small_frame = cv2.resize(frame, (160, 120), interpolation=cv2.INTER_LINEAR)
+        scale_x = frame.shape[1] / 160
+        scale_y = frame.shape[0] / 120
+        
+        hsv = cv2.cvtColor(small_frame, cv2.COLOR_BGR2HSV)
+        
+        # Create mask for target color
+        mask1 = cv2.inRange(hsv, self.lower_color, self.upper_color)
+        mask2 = cv2.inRange(hsv, self.lower_color2, self.upper_color2)
+        mask = cv2.bitwise_or(mask1, mask2)
+        
+        # Simplified morphology
+        mask = cv2.erode(mask, self.morph_kernel, iterations=1)
+        mask = cv2.dilate(mask, self.morph_kernel, iterations=1)
+        
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        barycenters = []
+        min_area = 50  # Adjusted for smaller frame
+        
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            
+            if area > min_area:
+                M = cv2.moments(contour)
+                if M['m00'] > 0:
+                    cx = int((M['m10'] / M['m00']) * scale_x)
+                    cy = int((M['m01'] / M['m00']) * scale_y)
+                    scaled_area = area * scale_x * scale_y
+                    
+                    barycenters.append((cx, cy, scaled_area))
+        
+        output = frame.copy() if self.show_visualization else frame
+        
+        if self.show_visualization:
+            for cx, cy, area in barycenters:
+                cv2.circle(output, (cx, cy), 8, (0, 0, 255), -1)
+                cv2.putText(output, f"{cx},{cy}", (cx+10, cy-10),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
+            
+            cv2.putText(output, f"Col: {len(barycenters)}", (5, 15),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        
+        return output, barycenters
+    
+    def track_binary_region(self, frame):
+        """Track the barycenter of the entire binary region - OPTIMIZED."""
+        # Reduce resolution
+        small_frame = cv2.resize(frame, (160, 120), interpolation=cv2.INTER_LINEAR)
+        scale_x = frame.shape[1] / 160
+        scale_y = frame.shape[0] / 120
+        
+        gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
+        _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
+        
+        barycenter = self.calculate_barycenter(binary)
+        
+        output = frame.copy() if self.show_visualization else frame
+        
+        if barycenter:
+            cx = int(barycenter[0] * scale_x)
+            cy = int(barycenter[1] * scale_y)
+            
+            white_pixels = np.count_nonzero(binary) * scale_x * scale_y
+            
+            center_x = frame.shape[1] // 2
+            error = cx - center_x
+            
+            if self.show_visualization:
+                cv2.circle(output, (cx, cy), 10, (0, 0, 255), -1)
+                cv2.line(output, (center_x, 0), (center_x, frame.shape[0]), (0, 255, 0), 1)
+                cv2.putText(output, f"E:{error}", (5, 15),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            
+            return output, (cx, cy, int(white_pixels), error)
+        else:
+            if self.show_visualization:
+                cv2.putText(output, "NO REGION", (5, 15),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            return output, None
 
-\cvitem{\small Langages}{Python (avancé), SQL, C++}
-\cvitem{\small ML/DL}{TensorFlow, PyTorch, Scikit-learn, Transformers}
-\cvitem{\small IA Générative}{Fine-tuning LLM, RAG, BioBERT, CamemBERT}
-\cvitem{\small Outils Data}{Pandas, NumPy, Power BI, Streamlit, Flask, Docker}
-\cvitem{\small Bases de données}{PostgreSQL, MySQL}
-\cvitem{\small Dev Tools}{Git, VS Code, XGBoost}
+
+class CameraPublisher(Node):
+    def __init__(self):
+        super().__init__('barycenter_camera_node')
+
+        self.br = CvBridge()
+        
+        # OPTIMIZED SETTINGS FOR RASPBERRY PI 4
+        self.frame_rate = 15  # Reduced from 30
+        self.publish_interval = 2  # Reduced from 5 (publish more frequently but at lower rate)
+        
+        # Barycenter tracker
+        self.tracker = BarycenterTracker()
+        
+        # Choose tracking mode
+        self.tracking_mode = "color"  # CHANGE THIS TO SELECT MODE
+        
+        # Statistics
+        self.frame_count = 0
+        self.start_time = time.time()
+        self.last_log_time = time.time()
+
+        # Configure QoS for better WiFi performance
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,  # Faster, allows frame drops
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,  # Only keep latest frame
+        )
+
+        # Publishers
+        self.publisher_processed = self.create_publisher(
+            sensor_msgs.msg.Image, 'camera/src_frame', qos_profile
+        )
+        
+        self.publisher_coordinates = self.create_publisher(
+            Float32MultiArray, 'barycenter/coordinates', qos_profile
+        )
+
+        self.i = 0
+
+        # Initialize camera with REDUCED RESOLUTION
+        self.cam = cv2.VideoCapture(0)
+        if not self.cam.isOpened():
+            self.get_logger().error("Failed to open the camera.")
+            raise RuntimeError("Camera initialization failed.")
+        
+        # LOWER RESOLUTION for less bandwidth
+        self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, 320)  # Keep at 320
+        self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)  # Keep at 240
+        self.cam.set(cv2.CAP_PROP_FPS, self.frame_rate)
+        
+        # Disable auto-focus and auto-exposure if available (reduces processing)
+        self.cam.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+        self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
+        
+        self.get_logger().info(f"Barycenter tracking initialized. Mode: {self.tracking_mode}")
+        self.get_logger().info(f"Frame rate: {self.frame_rate} fps, Publish interval: {self.publish_interval}")
+
+    def loop(self):
+        try:
+            while rclpy.ok():
+                loop_start = time.perf_counter()
+
+                self.i += 1
+                self.frame_count += 1
+
+                # Capture frame
+                success, frame = self.cam.read()
+                if not success:
+                    self.get_logger().warning("Failed to grab frame. Skipping...")
+                    time.sleep(0.01)
+                    continue
+
+                # Process and publish every Nth frame
+                if self.i % self.publish_interval == 0:
+                    
+                    # Apply selected tracking mode
+                    if self.tracking_mode == "contour":
+                        processed_frame, data = self.tracker.track_contours(frame)
+                    elif self.tracking_mode == "line":
+                        processed_frame, data = self.tracker.track_line(frame)
+                    elif self.tracking_mode == "color":
+                        processed_frame, data = self.tracker.track_color(frame)
+                    elif self.tracking_mode == "binary":
+                        processed_frame, data = self.tracker.track_binary_region(frame)
+                    else:
+                        processed_frame = frame
+                        data = None
+                    
+                    # JPEG compression for faster WiFi transmission
+                    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 75]  # 75% quality
+                    _, buffer = cv2.imencode('.jpg', processed_frame, encode_param)
+                    compressed_frame = cv2.imdecode(buffer, cv2.IMREAD_COLOR)
+                    
+                    # Publish compressed image
+                    rgb_frame = cv2.cvtColor(compressed_frame, cv2.COLOR_BGR2RGB)
+                    ros_image = self.br.cv2_to_imgmsg(rgb_frame, encoding="rgb8")
+                    self.publisher_processed.publish(ros_image)
+                    
+                    # Publish coordinates
+                    if data is not None:
+                        coord_msg = Float32MultiArray()
+                        
+                        if self.tracking_mode == "contour" or self.tracking_mode == "color":
+                            coords = []
+                            for x, y, area in data:
+                                coords.extend([float(x), float(y), float(area)])
+                            coord_msg.data = coords
+                        elif self.tracking_mode == "line":
+                            cx, cy, error, norm_error = data
+                            coord_msg.data = [float(cx), float(cy), float(error), float(norm_error)]
+                        elif self.tracking_mode == "binary":
+                            cx, cy, pixels, error = data
+                            coord_msg.data = [float(cx), float(cy), float(pixels), float(error)]
+                        
+                        self.publisher_coordinates.publish(coord_msg)
+                
+                # Log statistics every 5 seconds
+                current_time = time.time()
+                if current_time - self.last_log_time > 5.0:
+                    elapsed = current_time - self.start_time
+                    fps = self.frame_count / elapsed
+                    self.get_logger().info(f"FPS: {fps:.2f}, Mode: {self.tracking_mode}")
+                    self.last_log_time = current_time
+
+                # Maintain frame rate with adaptive sleep
+                elapsed_time = time.perf_counter() - loop_start
+                sleep_time = max(0, (1.0 / self.frame_rate) - elapsed_time)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+
+        except Exception as e:
+            self.get_logger().error(f"An error occurred: {e}")
+        finally:
+            self.cam.release()
+            self.get_logger().info("Camera released.")
+
+    def destroy(self):
+        """Cleanup resources explicitly."""
+        if self.cam.isOpened():
+            self.cam.release()
+        self.destroy_node()
 
 
+def main(args=None):
+    rclpy.init(args=args)
 
-}
+    camera_publisher = CameraPublisher()
 
+    loop_thread = threading.Thread(target=camera_publisher.loop, daemon=True)
+    loop_thread.start()
 
-% -------- FORMATION ----------
-\newcommand{\cveducation}{
-\cventry{2025--présent}{Informatique}{École Nationale d’Ingénieurs de Brest}{}{}{}
-\cventry{2021--2025}{Génie Industriel – IA \& Data Science}{ENSAM}{}{}{}
-}
-
-% -------- EXPÉRIENCE ----------
-\newcommand{\cvexperience}{
-\cventry{Juin–Août 2025}{Stagiaire Data Science}{Technocolabs}{}{}{
-\begin{itemize}
-\item Développement d’un modèle de prédiction de risque de crédit (97\% précision)
-\item Segmentation clients et analyse comportementale pour institutions financières
-\item Déploiement Streamlit pour validation opérationnelle
-\end{itemize}}
-}
-
-% -------- PROJETS ----------
-\newcommand{\cvprojects}{
+    try:
+        rclpy.spin(camera_publisher)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        camera_publisher.destroy()
+        rclpy.shutdown()
+        loop_thread.join(timeout=2.0)
 
 
-
-
-\cventry{2025}{Planification de la Recharge des Véhicules Électriques}{\textcolor{primarycolor}{Optimisation \& Énergie Intelligente}}{}{}{
-\begin{itemize}
-\item Optimisation des plannings de recharge via l’algorithme NSGA-II
-\item Équilibre entre charge réseau et satisfaction client (multi-objectifs)
-\item Interface Streamlit pour visualiser et tester les stratégies
-\end{itemize}}
-
-\cventry{2025}{Assistant de Recherche en Santé (NLP/RAG)}{\textcolor{primarycolor}{IA Générative \& NLP}}{}{}{
-\begin{itemize}
-\item Système QA biomédical bilingue (BioBERT, CamemBERT)
-\item Pipeline Retrieval-Augmented Generation (RAG)
-\end{itemize}}
-
-\cventry{2024}{Agent E-commerce AI}{\textcolor{primarycolor}{IA \& Personnalisation}}{}{}{
-\begin{itemize}
-\item Prédicteur de prix e-commerce et moteur de recommandation
-\item Agent autonome multi-modal (texte, image, son)
-\end{itemize}}
-
-
-}
-
-% -------- CERTIFICATIONS ----------
-\newcommand{\cvachievements}{
-\cvitem{2025}{LLM Engineering (IA Générative)}
-\cvitem{2025}{Lean 6 Sigma Yellow Belt}
-\cvitem{2024}{Machine Learning \& AI}
-}
-
-\begin{document}
-
-\makecvtitle
-\vspace{-1.2cm}
-
-\section{\textcolor{primarycolor}{\faUser} Objectif}
-\small\cvobjective
-
-\section{\textcolor{primarycolor}{\faGraduationCap} Formation}
-\small\cveducation
-
-\section{\textcolor{primarycolor}{\faCogs} Compétences Techniques}
-\small\cvskills
-
-\section{\textcolor{primarycolor}{\faBriefcase} Expérience}
-\small\cvexperience
-
-\section{\textcolor{primarycolor}{\faCode} Projets Academic }
-\small\cvprojects
-
-\section{\textcolor{primarycolor}{\faTrophy} Certifications, Langues \& Intérêts}
-\small
-\begin{multicols}{2}
-\cvachievements
-\columnbreak
-\cvitem{Anglais}{Langue maternelle}
-\cvitem{Français}{Courant}
-\cvitem{Centres d’intérêt}{IA générative, optimisation, innovation, hackathons, musique , foot}
-\end{multicols}
-
-% (Removed the bottom QR code block)
-
-\end{document}
+if __name__ == '__main__':
+    main()
